@@ -244,11 +244,11 @@ class StockApiTest {
 
   @Test
   void publishesOpenApiDocsForVersionedEndpoints() throws Exception {
+    URI docsUri =
+        URI.create(
+            endpoint.toString().replace("/api/v1/stocks/inbound", "/v3/api-docs/stock-v1"));
     HttpRequest request =
-        HttpRequest.newBuilder(
-                URI.create(endpoint.toString().replace("/inbound", "/v3/api-docs/stock-v1")))
-            .GET()
-            .build();
+        HttpRequest.newBuilder(docsUri).GET().build();
 
     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
