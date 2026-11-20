@@ -35,7 +35,10 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 class StockConcurrencyIntegrationTest {
 
-  @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.12");
+  @Container
+  static final PostgreSQLContainer POSTGRES =
+      new PostgreSQLContainer("postgres:17.12")
+          .withCommand("postgres", "-c", "timezone=Asia/Seoul");
 
   private static ConfigurableApplicationContext context;
   private static JdbcTemplate jdbc;

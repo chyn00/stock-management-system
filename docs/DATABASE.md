@@ -68,6 +68,7 @@
 
 ## 인덱스와 정합성
 
+- PostgreSQL 세션 시간대는 `Asia/Seoul`입니다. `TIMESTAMPTZ`는 절대 시각으로 저장되고 조회 시 해당 시간대로 표현됩니다.
 - PK와 UNIQUE 제약에 해당하는 인덱스는 PostgreSQL이 생성합니다.
 - 추가 조회 인덱스는 `stock_movements(tenant_id, item_id)`입니다.
 - 재고 갱신과 movement INSERT는 한 PostgreSQL 트랜잭션으로 처리합니다. 한쪽이 실패하면 전체를 롤백합니다.

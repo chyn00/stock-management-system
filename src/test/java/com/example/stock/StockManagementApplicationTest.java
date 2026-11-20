@@ -19,7 +19,8 @@ class StockManagementApplicationTest {
       new PostgreSQLContainer("postgres:17.12")
           .withDatabaseName("stock_management")
           .withUsername("stock_app")
-          .withPassword("test_password");
+          .withPassword("test_password")
+          .withCommand("postgres", "-c", "timezone=Asia/Seoul");
 
   @Test
   void startsWithPostgreSqlAndFlyway() {

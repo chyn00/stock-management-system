@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:17.12
+    command: ["postgres", "-c", "timezone=Asia/Seoul"]
     environment:
       POSTGRES_DB: stock_management
       POSTGRES_USER: stock_app
