@@ -9,7 +9,6 @@ import com.example.stock.stock.entity.Stock;
 import com.example.stock.stock.repository.StockRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class StockQueryService {
@@ -27,7 +26,6 @@ public class StockQueryService {
     this.tenantId = tenantId;
   }
 
-  @Transactional(readOnly = true)
   public StockResponse getStock(long itemId) {
     Item item =
         itemRepository
