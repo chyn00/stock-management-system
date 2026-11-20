@@ -1,5 +1,6 @@
 package com.example.stock.stock.repository;
 
+import com.example.stock.stock.api.dto.StockResponse;
 import com.example.stock.stock.entity.Stock;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.Modifying;
@@ -45,4 +46,14 @@ public interface StockRepository extends Repository<Stock, Stock.Key> {
       @Param("quantity") long quantity);
 
   Optional<Stock> findByTenantIdAndItemId(long tenantId, long itemId);
+
+  @Query(
+      """
+      SELECT new com.example.stock.stock.api.dto.StockResponse(i.id, i.name, s.quantity)
+      FROM Item i JOIN Stock s
+        ON s.tenantId = i.tenantId AND s.itemId = i.id
+      WHERE i.tenantId = :tenantId AND i.id = :itemId
+      """)
+  Optional<StockResponse> findStockResponse(
+      @Param("tenantId") long tenantId, @Param("itemId") long itemId);
 }

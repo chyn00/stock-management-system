@@ -25,5 +25,4 @@ public interface ItemRepository extends Repository<Item, Long> {
 
   Optional<Item> findByTenantIdAndSku(long tenantId, String sku);
 
-  Optional<Item> findByTenantIdAndId(long tenantId, long id);
 }
