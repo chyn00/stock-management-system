@@ -4,7 +4,7 @@ import com.example.stock.common.exception.ErrorCode;
 import com.example.stock.common.exception.StockApiException;
 import com.example.stock.item.entity.Item;
 import com.example.stock.item.repository.ItemRepository;
-import com.example.stock.stock.api.StockResponse;
+import com.example.stock.stock.api.dto.StockResponse;
 import com.example.stock.stock.entity.Stock;
 import com.example.stock.stock.repository.StockRepository;
 import org.springframework.beans.factory.annotation.Value;

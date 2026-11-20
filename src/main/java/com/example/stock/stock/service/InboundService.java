@@ -2,8 +2,8 @@ package com.example.stock.stock.service;
 
 import com.example.stock.item.entity.Item;
 import com.example.stock.item.repository.ItemRepository;
-import com.example.stock.stock.api.InboundRequest;
-import com.example.stock.stock.api.StockResponse;
+import com.example.stock.stock.api.dto.InboundRequest;
+import com.example.stock.stock.api.dto.StockResponse;
 import com.example.stock.stock.entity.Stock;
 import com.example.stock.stock.entity.StockMovement;
 import com.example.stock.stock.repository.StockMovementRepository;

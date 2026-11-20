@@ -6,7 +6,7 @@
 
 업무 데이터 접근은 Spring Data JPA로 구현합니다. Flyway가 애플리케이션 시작 시 최초 DDL을 적용하고, JPA는 `ddl-auto: validate`로 매핑을 검증합니다. `open-in-view`는 끄고 Service 안에서 필요한 값을 응답 DTO로 만듭니다. JdbcTemplate은 커밋 결과를 확인하는 테스트에서만 사용합니다.
 
-패키지는 테이블별이 아니라 업무 도메인별로 나누고 그 안에 레이어를 둡니다. `stock`은 `api/service/repository/entity`로 구성하며 Controller와 요청·응답 DTO를 `api`에 모읍니다. 변동 기록도 재고 업무의 일부이므로 `StockMovement`와 그 Repository는 `stock` 안에 둡니다. 상품 정보는 `item`로 분리하며 현재 필요한 `entity/repository`만 둡니다. 빈 패키지나 공통 기반 엔티티는 만들지 않습니다.
+패키지는 테이블별이 아니라 업무 도메인별로 나누고 그 안에 레이어를 둡니다. `stock`은 `api/service/repository/entity`로 구성합니다. Controller는 `api`, 요청·응답 DTO는 `api/dto`에 둡니다. 변동 기록도 재고 업무의 일부이므로 `StockMovement`와 그 Repository는 `stock` 안에 둡니다. 상품 정보는 `item`로 분리하며 현재 필요한 `entity/repository`만 둡니다. 빈 패키지나 공통 기반 엔티티는 만들지 않습니다.
 
 - `items`: BIGINT 내부 ID와 고객사 ID, 고객사별 유일한 SKU, nullable 상품명·바코드·가격·JSONB 메타데이터, 확인 상태, 생성 시각을 관리합니다. SKU는 대소문자를 구분하며 자동 변환하지 않습니다. 가격은 선택 값이며 입력하면 0 이상이어야 합니다.
 - `stocks`: 상품별 현재 수량을 저장하며 실시간 조회에 사용합니다. 조건부 UPDATE 등 PostgreSQL의 원자적 연산으로 재고 부족 및 동시 변경을 제어합니다.

@@ -1,5 +1,8 @@
 package com.example.stock.stock.api;
 
+import com.example.stock.stock.api.dto.InboundRequest;
+import com.example.stock.stock.api.dto.OutboundRequest;
+import com.example.stock.stock.api.dto.StockResponse;
 import com.example.stock.stock.service.InboundService;
 import com.example.stock.stock.service.OutboundService;
 import com.example.stock.stock.service.StockQueryService;
