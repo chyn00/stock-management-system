@@ -103,7 +103,8 @@ SKU는 고객사별 상품 식별자이며, 응답 `id`는 내부 상품 ID입�
 
 - **설계:** `stocks.quantity`에 상품별 현재 수량을 집계해 저장합니다.
 - **효과:** 조회할 때마다 `stock_movements` 전체를 합산하지 않아 현재 수량을 바로 읽습니다. 여러 애플리케이션 인스턴스도 같은 PostgreSQL 값을 기준으로 조회합니다.
-- **동시성:** 출고는 `quantity >= 요청 수량` 조건을 포함한 원자적 UPDATE로 처리합니다. 같은 재고 행의 갱신은 PostgreSQL이 순서대로 처리하고, DB의 `CHECK (quantity >= 0)`도 음수 수량을 막습니다.
+- **출고 검증:** `quantity >= 요청 수량` 조건부 원자 UPDATE로 확인과 차감을 함께 처리합니다. 같은 재고 행의 동시 갱신은 PostgreSQL이 순서대로 처리하며, 재고가 부족한 요청은 `409`로 거절합니다.
+- **DB 무결성:** `CHECK (quantity >= 0)`은 애플리케이션 외의 쓰기 경로에서도 음수 재고 저장을 막는 마지막 방어선입니다.
 
 ![집계 테이블과 INSERT 이력 분리](docs/diagrams/stock-movement-insert-reason.png)
 
