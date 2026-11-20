@@ -5,18 +5,19 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
+import java.io.Serializable;
 
 @Entity
 @Table(name = "stocks")
-@IdClass(StockId.class)
+@IdClass(Stock.Key.class)
 public class Stock {
 
   @Id
-  @Column(name = "tenant_id")
+  @Column(name = "tenant_id", nullable = false)
   private long tenantId;
 
   @Id
-  @Column(name = "item_id")
+  @Column(name = "item_id", nullable = false)
   private long itemId;
 
   @Column(nullable = false)
@@ -27,4 +28,6 @@ public class Stock {
   public long getQuantity() {
     return quantity;
   }
+
+  public record Key(long tenantId, long itemId) implements Serializable {}
 }

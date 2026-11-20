@@ -12,7 +12,7 @@
 - `stocks`: 상품별 현재 수량을 저장하며 실시간 조회에 사용합니다. 조건부 UPDATE 등 PostgreSQL의 원자적 연산으로 재고 부족 및 동시 변경을 제어합니다.
 - `stock_movements`: 입고, 출고, 관리자 조정 등 확정된 재고 변동을 `event_type`, `source_type`, `quantity_delta`, 요청 식별자, 업무 원본 참조, 사유(`reason`), 기록 시각과 함께 append-only로 보존합니다. `event_type`과 `source_type`은 별도 값이며, 사유는 업무 원본 참조와 구분합니다.
 
-수량과 증감은 BIGINT 정수로 관리합니다. `stocks`의 `(tenant_id, item_id)`가 기본 키이며 수량 기본값은 0입니다. 변동 유형은 `INBOUND`, `OUTBOUND`, `ADJUSTMENT`, 출처는 `API`, `EXTERNAL`, `SYSTEM`입니다. 입고 delta는 양수, 출고 delta는 음수이며 조정도 0은 허용하지 않습니다. 오입출고 보정은 `ADJUSTMENT`로 기록합니다. 업무 원본은 선택적인 `reference_type`, `reference_id`로 참조하고, 기록 시각은 TIMESTAMPTZ로 저장합니다.
+수량과 증감은 BIGINT 정수로 관리합니다. `stocks`의 `(tenant_id, item_id)`가 기본 키이며 수량 기본값은 0입니다. JPA는 이 복합키를 `Stock` 내부의 `Key` record로 표현합니다. 별도 엔티티나 추가 계층은 두지 않습니다. 변동 유형은 `INBOUND`, `OUTBOUND`, `ADJUSTMENT`, 출처는 `API`, `EXTERNAL`, `SYSTEM`입니다. 입고 delta는 양수, 출고 delta는 음수이며 조정도 0은 허용하지 않습니다. 오입출고 보정은 `ADJUSTMENT`로 기록합니다. 업무 원본은 선택적인 `reference_type`, `reference_id`로 참조하고, 기록 시각은 TIMESTAMPTZ로 저장합니다.
 
 ## 변동 기록과 집계
 

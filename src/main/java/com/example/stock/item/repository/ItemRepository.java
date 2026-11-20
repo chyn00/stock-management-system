@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
+import org.springframework.data.repository.query.Param;
 
 public interface ItemRepository extends Repository<Item, Long> {
 
@@ -13,11 +14,14 @@ public interface ItemRepository extends Repository<Item, Long> {
       value =
           """
           INSERT INTO items (tenant_id, sku, name)
-          VALUES (?1, ?2, ?3)
+          VALUES (:tenantId, :sku, :name)
           ON CONFLICT (tenant_id, sku) DO NOTHING
           """,
       nativeQuery = true)
-  int insertIfAbsent(long tenantId, String sku, String name);
+  int insertIfAbsent(
+      @Param("tenantId") long tenantId,
+      @Param("sku") String sku,
+      @Param("name") String name);
 
   Optional<Item> findByTenantIdAndSku(long tenantId, String sku);
 
