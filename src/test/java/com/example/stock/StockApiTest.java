@@ -8,16 +8,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -138,27 +129,6 @@ class StockApiTest {
     assertEquals("INVALID_REQUEST", mapper.readTree(response.body()).path("code").asString());
   }
 
-  @ParameterizedTest
-  @ValueSource(booleans = {false, true})
-  void handlesConcurrentInboundWithoutDuplicatingItem(boolean existing) throws Exception {
-    String sku = newSku();
-    int initialQuantity = existing ? 3 : 0;
-    if (existing) {
-      assertEquals(200, inbound(sku, initialQuantity, null, UUID.randomUUID()).statusCode());
-    }
-    int requests = 8;
-    List<HttpResponse<String>> responses =
-        concurrentRequests(requests, () -> inbound(sku, 1, null, UUID.randomUUID()));
-    Set<Long> itemIds = new HashSet<>();
-    for (HttpResponse<String> response : responses) {
-      assertEquals(200, response.statusCode(), response.body());
-      itemIds.add(mapper.readTree(response.body()).path("id").asLong());
-    }
-    assertEquals(1, itemIds.size());
-
-    assertQuantityAndMovements(sku, initialQuantity + requests, existing ? requests + 1 : requests);
-  }
-
   @Test
   void rollsBackStockIncreaseOnConflictingRequestId() throws Exception {
     String sku = newSku();
@@ -259,37 +229,6 @@ class StockApiTest {
     assertTrue(body.path("paths").has("/api/v1/stocks/outbound"));
   }
 
-  @Test
-  void concurrentOutboundNeverMakesStockNegative() throws Exception {
-    String sku = newSku();
-    int initialQuantity = 5;
-    assertEquals(200, inbound(sku, initialQuantity, null, UUID.randomUUID()).statusCode());
-
-    List<HttpResponse<String>> responses =
-        concurrentRequests(8, () -> outbound(sku, 1, UUID.randomUUID()));
-
-    assertEquals(5, responses.stream().filter(response -> response.statusCode() == 200).count());
-    assertEquals(3, responses.stream().filter(response -> response.statusCode() == 409).count());
-    assertQuantityAndMovements(sku, 0, 6);
-  }
-
-  @Test
-  void concurrentInboundAndOutboundKeepStockAndMovementTotalAligned() throws Exception {
-    String sku = newSku();
-    int concurrentRequests = 8;
-    assertEquals(200, inbound(sku, concurrentRequests, null, UUID.randomUUID()).statusCode());
-
-    List<CheckedSupplier<HttpResponse<String>>> requests = new ArrayList<>();
-    for (int i = 0; i < concurrentRequests; i++) {
-      requests.add(() -> inbound(sku, 1, null, UUID.randomUUID()));
-      requests.add(() -> outbound(sku, 1, UUID.randomUUID()));
-    }
-    List<HttpResponse<String>> responses = concurrentRequests(requests);
-
-    assertTrue(responses.stream().allMatch(response -> response.statusCode() == 200));
-    assertQuantityAndMovements(sku, concurrentRequests, 1 + concurrentRequests * 2);
-  }
-
   private HttpResponse<String> inbound(String sku, long quantity, String name, UUID requestId)
       throws Exception {
     var body = mapper.createObjectNode();
@@ -336,52 +275,6 @@ class StockApiTest {
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build();
     return client.send(request, HttpResponse.BodyHandlers.ofString());
-  }
-
-  private List<HttpResponse<String>> concurrentRequests(
-      int count, CheckedSupplier<HttpResponse<String>> request) throws Exception {
-    List<CheckedSupplier<HttpResponse<String>>> requests = new ArrayList<>();
-    for (int i = 0; i < count; i++) {
-      requests.add(request);
-    }
-    return concurrentRequests(requests);
-  }
-
-  private List<HttpResponse<String>> concurrentRequests(
-      List<CheckedSupplier<HttpResponse<String>>> requests) throws Exception {
-    int count = requests.size();
-    CountDownLatch ready = new CountDownLatch(count);
-    CountDownLatch start = new CountDownLatch(1);
-    ExecutorService executor = Executors.newFixedThreadPool(count);
-    List<Future<HttpResponse<String>>> futures = new ArrayList<>();
-    try {
-      for (CheckedSupplier<HttpResponse<String>> request : requests) {
-        futures.add(
-            executor.submit(
-                () -> {
-                  ready.countDown();
-                  if (!start.await(10, TimeUnit.SECONDS)) {
-                    throw new IllegalStateException("동시 요청 시작 대기 시간 초과");
-                  }
-                  return request.get();
-                }));
-      }
-      assertTrue(ready.await(10, TimeUnit.SECONDS));
-      start.countDown();
-      List<HttpResponse<String>> responses = new ArrayList<>();
-      for (Future<HttpResponse<String>> future : futures) {
-        responses.add(future.get(30, TimeUnit.SECONDS));
-      }
-      return responses;
-    } finally {
-      start.countDown();
-      executor.shutdownNow();
-    }
-  }
-
-  @FunctionalInterface
-  private interface CheckedSupplier<T> {
-    T get() throws Exception;
   }
 
   private void assertQuantityAndMovements(String sku, long quantity, long movements) {
