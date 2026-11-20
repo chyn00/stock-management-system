@@ -2,10 +2,16 @@
 /AGENTS.md
 /docs/TASKS.md
 .serena/
+.codex/
+.agents/
+.claude/
+CLAUDE.md
 
 # Gradle
 .gradle/
+.local-gradle/
 build/
+out/
 !gradle/wrapper/gradle-wrapper.jar
 
 # IDE
@@ -21,3 +27,7 @@ build/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local logs
+*.log
+logs/

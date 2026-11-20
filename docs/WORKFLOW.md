@@ -14,7 +14,7 @@ Gradle/Spring Boot 실행 기반, PostgreSQL Docker Compose, Flyway, JUnit 5·Te
 
 ### Phase 1 — 데이터 모델
 
-`products`, `stocks`, `stock_movements` 계약과 SKU·Tenant 키 범위, 무결성 제약을 검토하고 Flyway 최초 migration을 작성합니다. migration에는 정확히 세 테이블만 둡니다.
+`items`, `stocks`, `stock_movements` 계약과 SKU·Tenant 키 범위, 무결성 제약을 검토하고 Flyway 최초 migration을 작성합니다. migration에는 정확히 세 테이블만 둡니다.
 
 ### Phase 2 — 상품 및 입고
 
@@ -30,7 +30,7 @@ Gradle/Spring Boot 실행 기반, PostgreSQL Docker Compose, Flyway, JUnit 5·Te
 
 ### Phase 5 — 안정성 개선
 
-요청 ID 멱등성, 내용이 다른 중복 요청의 409, 인증 기반 Tenant 스코프, 오류 응답과 movement INSERT 실패 시 전체 롤백을 검토·검증합니다. 핵심 API 완료 후 미완성 상품의 사람 보정 흐름을 구현할지 검토합니다. 필요가 확인된 개선만 추가합니다.
+요청 ID 멱등성, 내용이 다른 중복 요청의 409, Tenant 데이터 범위, 오류 응답과 movement INSERT 실패 시 전체 롤백을 검토·검증합니다. 인증 시스템과 상품 보정 API는 필수 MVP 이후의 별도 검토 대상으로 둡니다.
 
 ### Phase 6 — 최종 검토
 
@@ -40,6 +40,6 @@ Gradle/Spring Boot 실행 기반, PostgreSQL Docker Compose, Flyway, JUnit 5·Te
 
 ## Git 흐름
 
-`main`은 검증된 코드용이며 작업은 공통 `feature` 브랜치에서 진행합니다. 변경은 논리적 단위별로 나누며, 커밋은 `feature: 한글 변경 요약` 제목 뒤 빈 줄을 두고 중요한 변경점과 이유를 본문에 적습니다. 사용자가 변경을 승인하기 전에는 staging, commit, push를 하지 않습니다. push에는 별도 명시 승인이 필요합니다.
+현재 프로젝트는 `main`에서 작업합니다. 변경은 논리적 단위별로 나누며, 커밋은 `feature: 한글 변경 요약` 제목 뒤 빈 줄을 두고 중요한 변경점과 이유를 본문에 적습니다. 사용자가 변경을 승인하기 전에는 staging, commit, push를 하지 않습니다. push에는 별도 명시 승인이 필요합니다.
 
 작업 하나의 검증을 마치면 승인 범위에서 커밋·푸시하고, 다음 작업의 목표와 설계는 사용자와 검토합니다. 사용자가 현재 작업의 푸시와 다음 단계 진행을 함께 승인하면 해당 범위에서 이어갑니다. 독립적인 여러 작업을 한꺼번에 모아 커밋하지 않습니다.

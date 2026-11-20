@@ -34,7 +34,7 @@ class StockManagementApplicationTest {
       String database = jdbcTemplate.queryForObject("SELECT current_database()", String.class);
 
       assertEquals("stock_management", database);
-      assertEquals(0, context.getBean(Flyway.class).info().all().length);
+      assertEquals("1", context.getBean(Flyway.class).info().current().getVersion().toString());
     }
   }
 }
