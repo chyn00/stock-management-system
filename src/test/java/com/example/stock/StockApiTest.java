@@ -243,6 +243,23 @@ class StockApiTest {
   }
 
   @Test
+  void publishesOpenApiDocsForVersionedEndpoints() throws Exception {
+    HttpRequest request =
+        HttpRequest.newBuilder(
+                URI.create(endpoint.toString().replace("/inbound", "/v3/api-docs/stock-v1")))
+            .GET()
+            .build();
+
+    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+    assertEquals(200, response.statusCode(), response.body());
+    JsonNode body = mapper.readTree(response.body());
+    assertEquals("v1", body.path("info").path("version").asString());
+    assertTrue(body.path("paths").has("/api/v1/stocks/inbound"));
+    assertTrue(body.path("paths").has("/api/v1/stocks/outbound"));
+  }
+
+  @Test
   void concurrentOutboundNeverMakesStockNegative() throws Exception {
     String sku = newSku();
     int initialQuantity = 5;
