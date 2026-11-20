@@ -1,111 +1,96 @@
 # Stock Management System
 
-- Java 21과 PostgreSQL로 입고·출고 및 현재 재고를 관리하는 REST API
-- 핵심 범위: SKU 자동 등록 입고, 재고 부족 방지 출고, 상품 ID 기준 재고 조회
-- 기본 패키지: `com.example.stock`
+SKU 기준으로 상품을 입고·출고하고, 상품별 현재 재고와 변경 이력을 관리하는 REST API입니다.
 
 ## 설계 요약
 
-| 데이터 | 역할 | 선택 이유 |
-| --- | --- | --- |
-| `items` | 고객사별 SKU와 상품 정보 | 상품 메타데이터와 수량 변경 분리 |
-| `stocks` | 상품별 현재 수량 | 합계 조회 없이 빠르게 읽고, 원자 UPDATE로 출고 가능 여부 판단 |
-| `stock_movements` | 확정된 수량 증감 이력 | INSERT 중심으로 변경 근거를 보존 |
+과제의 응답 형태인 `id`, `name`, `quantity`는 유지하면서 내부 데이터는 역할에 따라 나눴습니다.
 
-- 재고 수량 갱신과 movement INSERT는 한 PostgreSQL 트랜잭션으로 처리합니다.
-- 출고는 `quantity >= 요청 수량` 조건부 UPDATE가 성공할 때만 이력을 추가합니다.
-- movement 기록이 실패하면 재고 수량 변경도 롤백합니다.
-- 같은 SKU 최초 입고가 동시에 와도 `tenant_id + sku` 유일 제약으로 상품은 하나만 등록합니다. 등록 INSERT에서 충돌한 요청도 상품을 다시 조회해 각자 재고와 movement를 반영하므로 수량 증가가 누락되지 않습니다.
-- 이는 상품 등록 단계의 중복 방지입니다. 요청 재시도는 별도로 `requestId` 유일 제약으로 거절하며, 중복 요청의 성공 응답 재사용은 하지 않습니다.
-- `stocks.quantity`와 movement `quantity_delta` 합계를 매 API마다 계산하지 않습니다. 통합 테스트에서 두 값의 정합성을 확인합니다.
-- 읽기 모델을 분리한 CQRS 유사 구조지만, 비동기 시스템은 사용하지 않습니다.
-- 미등록 SKU는 최소 정보로 등록해 입고하고, 상품명은 추후 보완할 수 있도록 nullable로 둡니다.
+| 데이터 | 책임 |
+| --- | --- |
+| `items` | 고객사별 SKU와 상품 정보 |
+| `stocks` | 상품별 현재 수량. 조회와 원자적인 출고 검증에 사용 |
+| `stock_movements` | 확정된 입고·출고 수량 변화 기록 |
 
-상세 내용은 [아키텍처](docs/ARCHITECTURE.md)와 [결정 기록](docs/DECISIONS.md)을 참고하세요.
+```mermaid
+flowchart LR
+    A[입고 / 출고 요청] --> B[상품 정보<br/>items]
+    A --> C[현재 수량<br/>stocks]
+    C -->|같은 트랜잭션| D[변경 이력<br/>stock_movements]
+```
+
+원본 다이어그램: [stock-flow.mmd](docs/diagrams/stock-flow.mmd)
+
+- 현재 수량과 변동 이력을 나눈 이유: 매번 원장 합계를 계산하지 않고 현재고를 읽고, 변경 근거는 별도 기록으로 보존합니다.
+- 커넥션 풀: Spring Boot가 기본 HikariCP를 구성합니다. 기본 최대 연결 수 10을 사용하며, MVP에서 별도 풀 설정은 두지 않습니다.
+- 두 데이터를 같은 트랜잭션에서 갱신하는 이유: 재고 변경이 성공했는데 이력이 빠지거나, 이력만 남는 상태를 방지합니다.
+- 출고는 `현재 수량 >= 요청 수량` 조건을 포함한 UPDATE로 처리합니다. DB가 원자적으로 조건을 확인하고 수량을 바꿔 음수 재고를 막습니다.
+- 같은 SKU의 최초 입고가 겹쳐도 유일 제약으로 상품 행은 하나만 생깁니다. 각 요청은 자신의 재고 증가와 변동 기록을 계속 처리합니다.
+- 재시도 식별자인 `requestId` 중복은 별도 충돌로 거절합니다. 성공 응답을 재사용하지 않습니다.
+- 재고 조회는 `Item`과 `Stock`을 연결하는 JPQL DTO projection으로 `id`, `name`, `quantity`만 한 번에 조회합니다. fetch join은 엔티티 연관관계가 있어야 사용할 수 있어, 조회만을 위해 양방향 연관관계를 추가하는 대신 필요한 컬럼만 DTO로 바로 받습니다. 현재 재고 조회 경로에는 지연 로딩 연관관계가 없어 N+1도 발생하지 않습니다.
+- 미등록 SKU 입고는 이름 없이도 처리할 수 있습니다. 상품명은 nullable이며, 자동 등록 상품은 보정 대상 상태로 표시합니다.
+
+상세 설계는 [아키텍처 문서](docs/ARCHITECTURE.md), 주요 결정은 [결정 기록](docs/DECISIONS.md)에 있습니다.
 
 ## 기술 스택
 
-- Java 21, Spring Boot 4.1.3, Gradle Kotlin DSL
-- PostgreSQL 17, Spring Data JPA, Flyway
-- Swagger UI / OpenAPI: springdoc-openapi 3.2.0
-- JUnit Jupiter 5.14.4, Testcontainers 2.0.5
-- Docker Compose
-- 프로젝트 버전: `0.1.0-SNAPSHOT`
+| 구분 | 기술 |
+| --- | --- |
+| 애플리케이션 | Java 21, Spring Boot 4.1.3 |
+| 빌드 | Gradle Kotlin DSL |
+| 데이터베이스 | PostgreSQL 17, Spring Data JPA, Flyway |
+| API 문서 | springdoc-openapi 3.2.0 |
+| 테스트 | JUnit Jupiter 5.14.4, Testcontainers 2.0.5 |
 
-## 실행
+## 로컬 실행
 
-- 준비: Java 21, Docker, Docker Compose
-- PostgreSQL 기동, Flyway DDL 적용, 애플리케이션 실행:
+필요 항목: Java 21, Docker, Docker Compose
 
 ```bash
 ./run-local.sh
 ```
 
-- HTTP 포트는 기본적으로 사용 가능한 임의 포트를 선택합니다. 시작 로그에서 포트를 확인하세요.
-- 원하는 포트 지정: `SERVER_PORT=18765 ./run-local.sh`
-- Swagger UI: `http://localhost:<실행 포트>/swagger-ui.html`
-- OpenAPI 문서: `/v3/api-docs/stock-v1`
-- DDL은 [Flyway V1](src/main/resources/db/migration/V1__create_initial_schema.sql)에서 관리하며, 별도 수동 실행은 필요하지 않습니다.
-- DB 접속 설정: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`
-- 개발 기본 Tenant ID: `TENANT_ID` 환경 변수, 기본값 `1`
-- PostgreSQL 중지: `docker compose stop postgres`
+스크립트가 PostgreSQL을 시작하고 Flyway로 스키마를 적용한 뒤 애플리케이션을 실행합니다. 기본 HTTP 포트는 실행 시 선택되며 시작 로그에서 확인할 수 있습니다. 직접 지정하려면 `SERVER_PORT=18765 ./run-local.sh`를 사용합니다.
 
-## API (`/api/v1`)
+| 항목 | 주소 |
+| --- | --- |
+| Swagger UI | `http://localhost:<port>/swagger-ui.html` |
+| OpenAPI JSON | `http://localhost:<port>/v3/api-docs/stock-v1` |
 
-- SKU는 고객사별 식별자이며 앞뒤 공백을 제거하고 대소문자를 구분합니다.
-- 응답의 `id`는 내부 상품 ID입니다.
-- 입고·출고 성공 응답은 `id`, `name`, `quantity`를 반환합니다.
+DB 접속은 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`로 변경할 수 있습니다. 개발용 Tenant ID는 `TENANT_ID` 환경 변수로 설정하며 기본값은 `1`입니다. PostgreSQL은 `docker compose stop postgres`로 중지합니다.
 
-### 입고
+## API
 
-- `POST /api/v1/stocks/inbound`
-- 필수: `sku`, 양수 `quantity`, UUID `requestId`
-- 선택: `name`, `reason`
-- 미등록 SKU면 상품 등록과 입고를 함께 처리합니다. 상품명이 없으면 `name`은 `null`입니다.
-- 기존 SKU 입고는 기존 상품 정보를 덮어쓰지 않습니다.
+기본 경로는 `/api/v1`입니다. SKU는 고객사별 상품 식별자이고, 응답의 `id`는 내부 상품 ID입니다. SKU 앞뒤 공백은 제거하며 대소문자는 구분합니다.
+
+| Method | 경로 | 요청 | 성공 응답 | 주요 오류 |
+| --- | --- | --- | --- | --- |
+| `POST` | `/stocks/inbound` | `sku`, `quantity`, `requestId`; 선택 `name`, `reason` | `200` 상품 ID·이름·현재 수량 | `400` 잘못된 요청, `409` 중복 요청 ID |
+| `POST` | `/stocks/outbound` | `sku`, `quantity`, `requestId`; 선택 `reason` | `200` 상품 ID·이름·현재 수량 | `400` 잘못된 요청, `404` 미등록 SKU, `409` 재고 부족·중복 요청 ID |
+| `GET` | `/stocks/{itemId}` | 경로의 상품 ID | `200` 상품 ID·이름·현재 수량 | `404` 미등록 상품 |
+
+입고 예시:
 
 ```json
 {
   "sku": "SKU-001",
+  "name": "상품 A",
   "quantity": 10,
   "requestId": "11111111-1111-1111-1111-111111111111"
 }
 ```
 
-### 출고
-
-- `POST /api/v1/stocks/outbound`
-- 필수: `sku`, 양수 `quantity`, UUID `requestId`
-- 선택: `reason`
-- 미등록 SKU는 `404`, 재고 부족은 `409`입니다.
+입고와 출고 응답은 다음 형태입니다.
 
 ```json
 {
-  "sku": "SKU-001",
-  "quantity": 3,
-  "requestId": "22222222-2222-2222-2222-222222222222"
+  "id": 1,
+  "name": "상품 A",
+  "quantity": 10
 }
 ```
 
-### 현재 재고 조회
-
-- `GET /api/v1/stocks/{itemId}`
-- 응답: `id`, `name`, `quantity`
-- 등록되지 않은 상품 ID는 `404`입니다.
-
-```json
-{"id":1,"name":null,"quantity":7}
-```
-
-### 오류 응답
-
-| 상태 | 조건 |
-| --- | --- |
-| `400` | 0 이하 수량, 필수값 누락, 잘못된 JSON·UUID |
-| `404` | 미등록 상품 출고·조회 |
-| `409` | 재고 부족 또는 중복 요청 ID |
-
-오류 응답은 `code`, `message`를 포함합니다.
+`quantity`는 1 이상의 정수입니다. 잘못된 JSON, 필수값 누락, UUID 형식 오류는 `400`이며 오류 응답은 `code`, `message`를 포함합니다.
 
 ## 테스트
 
@@ -114,25 +99,25 @@
 ./gradlew build
 ```
 
-- Testcontainers가 실행하는 PostgreSQL로 HTTP부터 DB까지 통합 테스트합니다. H2는 사용하지 않습니다.
-- 신규·기존 SKU 입고, 정상 출고, 재고 부족, 재고 조회와 잘못된 요청을 확인합니다.
-- 동시 최초 입고·동시 입고·동시 출고·동일 상품 입고/출고 혼합 요청을 확인합니다.
-- 원장 INSERT 실패 시 롤백과 현재 수량/변동 합계 일치를 확인합니다.
-- OpenAPI 문서에 v1 입고·출고 경로가 노출되는지도 확인합니다.
-- 테스트는 포트 `0`을 사용해 사용 가능한 포트로 기동합니다.
-
-## MVP 범위
-
-- Tenant 데이터 관계는 DB에 반영합니다. 인증이 없는 MVP에서 임의 요청 헤더를 Tenant 보안 경계로 사용하지 않습니다.
-- 인증, 상품 정보 보정 API, 예약 재고와 물류센터 업무는 구현 범위에서 제외했습니다.
-- 바코드 인식은 상품 식별이며, 인식만으로 재고를 변경하지 않습니다.
-- 추가 설계는 필수 입고·출고·조회 흐름과 정합성 검증을 마친 뒤 검토합니다.
-
-## 에이전트 도구 사용
-
-| 도구 | 사용 목적 |
+| 테스트 클래스 | 확인 범위 |
 | --- | --- |
-| Serena MCP | 프로젝트 작업 지침과 코드 탐색 기능 확인 |
-| Context7 MCP | Spring, JUnit, Testcontainers, springdoc 공식 문서에서 호환 버전과 API 사용법 확인 |
+| `StockApiTest` | HTTP 요청 검증, 입고·출고·조회, 오류 및 트랜잭션 롤백 |
+| `StockConcurrencyIntegrationTest` | 동시 최초/기존 입고, 동시 출고, 입고·출고 혼합 요청, 재고와 원장 합계 |
 
-문서에서 확인한 라이브러리 사용법은 프로젝트 빌드 및 PostgreSQL 통합 테스트로 확인하는 것을 원칙으로 합니다. 코드·Git 규칙은 [CONVENTIONS](docs/CONVENTIONS.md), 작업 흐름은 [WORKFLOW](docs/WORKFLOW.md)를 참고하세요.
+두 테스트 모두 Testcontainers PostgreSQL을 사용하며 H2로 대체하지 않습니다.
+
+## 범위와 확장
+
+- MVP에는 입고·출고·현재고 조회를 포함합니다. 인증, 상품 정보 보정 API, 예약 재고와 물류센터 업무 모델은 포함하지 않습니다.
+- Tenant ID는 데이터 구분을 위한 설정값입니다. 인증 없는 상태에서 임의 요청 헤더를 Tenant 보안 경계로 사용하지 않습니다.
+- 바코드 인식은 상품 식별이며, 인식만으로 재고를 변경하지 않습니다.
+- 필요해지면 실제 인증을 통한 Tenant 식별과 상품 정보 보정 흐름을 추가할 수 있습니다.
+
+## AI 개발 도구
+
+| 도구 | 사용 |
+| --- | --- |
+| Serena MCP | 프로젝트 코드 탐색과 변경 위치 확인 |
+| Context7 MCP | 사용 라이브러리의 공식 문서와 호환 정보 확인 |
+
+프로젝트 규칙과 작업 흐름은 [CONVENTIONS](docs/CONVENTIONS.md), [WORKFLOW](docs/WORKFLOW.md), [TASKS](docs/TASKS.md)를 참고하세요.
