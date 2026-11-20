@@ -20,7 +20,7 @@ public interface StockRepository extends Repository<Stock, Stock.Key> {
       nativeQuery = true)
   int insertIfAbsent(@Param("tenantId") long tenantId, @Param("itemId") long itemId);
 
-  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Modifying
   @Query(
       """
       UPDATE Stock s SET s.quantity = s.quantity + :quantity
@@ -31,7 +31,7 @@ public interface StockRepository extends Repository<Stock, Stock.Key> {
       @Param("itemId") long itemId,
       @Param("quantity") long quantity);
 
-  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Modifying
   @Query(
       """
       UPDATE Stock s SET s.quantity = s.quantity - :quantity
