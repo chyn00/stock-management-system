@@ -30,7 +30,7 @@ Gradle/Spring Boot 실행 기반, PostgreSQL Docker Compose, Flyway, JUnit 5·Te
 
 ### Phase 5 — 안정성 개선
 
-요청 ID 멱등성, 내용이 다른 중복 요청의 409, Tenant 데이터 범위, 오류 응답과 movement INSERT 실패 시 전체 롤백을 검토·검증합니다. 인증 시스템과 상품 보정 API는 필수 MVP 이후의 별도 검토 대상으로 둡니다.
+요청 ID 멱등성 정책, Tenant 데이터 범위, 오류 응답과 movement INSERT 실패 시 전체 롤백을 검토·검증합니다. 현재는 같은 고객사의 중복 요청 ID를 payload와 관계없이 409로 거절하며, 재시도에서 성공 응답을 재사용하는 멱등성은 구현하지 않았습니다. 인증 시스템과 상품 보정 API는 필수 MVP 이후의 별도 검토 대상으로 둡니다.
 
 ### Phase 6 — 최종 검토
 

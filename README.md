@@ -64,14 +64,18 @@ API 기본 경로: `/api`
 | `POST` | `/stocks/outbound` | `sku`, 양수 `quantity`, UUID `requestId`; 선택 `reason` | 상품 ID·이름·현재 수량 |
 | `GET` | `/stocks/{itemId}` | 상품 ID | 상품 ID·이름·현재 수량 |
 
-요청 오류는 공통 형식으로 응답합니다.
+아래 API 오류는 공통 `{code, message}` 형식으로 응답합니다.
 
 | HTTP 상태 | 코드 | 발생 조건 |
 | --- | --- | --- |
-| `400 Bad Request` | `INVALID_REQUEST` | 필수값 누락, 수량 0 이하, 잘못된 JSON 또는 필드 형식 |
+| `400 Bad Request` | `INVALID_REQUEST` | 필수값 누락, 수량 0 이하, 잘못된 JSON·필드 또는 경로 ID 형식 |
+| `415 Unsupported Media Type` | `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 `Content-Type` |
 | `404 Not Found` | `ITEM_NOT_FOUND` | 등록되지 않은 SKU 출고 또는 상품 조회 |
 | `409 Conflict` | `INSUFFICIENT_STOCK` | 출고 요청 수량보다 현재 재고가 적음 |
-| `409 Conflict` | `REQUEST_CONFLICT` | 이미 사용된 요청 ID |
+| `409 Conflict` | `STOCK_QUANTITY_OVERFLOW` | 입고 후 재고가 DB의 `BIGINT` 범위를 초과 |
+| `409 Conflict` | `REQUEST_CONFLICT` | 같은 고객사에서 이미 사용된 요청 ID. 요청 내용과 관계없이 거절 |
+
+성공 응답 예시 (`POST /api/stocks/inbound`)
 
 ```json
 {"id": 1, "name": null, "quantity": 10}
@@ -135,8 +139,9 @@ SKU는 고객사별 상품 식별자이며, 응답 `id`는 내부 상품 ID입�
 | --- | --- |
 | `StockApiTest` | HTTP 입고·출고·조회, 입력 오류, 재고 부족, 롤백, OpenAPI |
 | `StockConcurrencyIntegrationTest` | 동시 최초 입고, 동시 입고, 동시 출고, 입고·출고 혼합, 현재고와 movement 합계 |
+| `StockManagementApplicationTest` | PostgreSQL 기동, Flyway V1 적용, JPA 매핑 시작 확인 |
 
-두 클래스 모두 Testcontainers PostgreSQL을 사용합니다. H2를 쓰지 않습니다. movement INSERT 실패 시 전체 롤백되고, 동시 요청 후 `stocks.quantity = SUM(stock_movements.quantity_delta)`가 성립하는지 DB 결과로 확인합니다.
+세 클래스 모두 Testcontainers PostgreSQL을 사용합니다. H2를 쓰지 않습니다. movement INSERT 실패 시 전체 롤백되고, 동시 요청 후 `stocks.quantity = SUM(stock_movements.quantity_delta)`가 성립하는지 DB 결과로 확인합니다.
 
 ## 확장·회고
 
