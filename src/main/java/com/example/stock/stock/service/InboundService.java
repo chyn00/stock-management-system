@@ -8,6 +8,7 @@ import com.example.stock.stock.entity.Stock;
 import com.example.stock.stock.entity.StockMovement;
 import com.example.stock.stock.repository.StockMovementRepository;
 import com.example.stock.stock.repository.StockRepository;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,9 +34,13 @@ public class InboundService {
 
   @Transactional
   public StockResponse receive(InboundRequest request) {
-    itemRepository.insertIfAbsent(tenantId, request.sku(), request.name());
+    Optional<Item> itemOptional = itemRepository.findByTenantIdAndSku(tenantId, request.sku());
+    if (itemOptional.isEmpty()) {
+      itemRepository.insertIfAbsent(tenantId, request.sku(), request.name());
+      itemOptional = itemRepository.findByTenantIdAndSku(tenantId, request.sku());
+    }
     Item item =
-        itemRepository.findByTenantIdAndSku(tenantId, request.sku()).orElseThrow();
+        itemOptional.orElseThrow(() -> new IllegalStateException("입고 상품을 등록하지 못했습니다."));
 
     stockRepository.insertIfAbsent(tenantId, item.getId());
     int updated = stockRepository.increase(tenantId, item.getId(), request.quantity());

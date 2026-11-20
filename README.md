@@ -19,10 +19,28 @@ SKU 기준으로 입고·출고를 처리하고 현재 재고와 변경 근거�
 준비되면 실행합니다.
 
 ```bash
-./run-local.sh
+SERVER_PORT=18765 ./run-local.sh
 ```
 
-PostgreSQL 기동, Flyway DDL 적용, 애플리케이션 실행을 한 번에 합니다. HTTP 포트는 시작 로그에서 확인하고 Swagger UI는 `http://localhost:<port>/swagger-ui.html`에서 엽니다. `SERVER_PORT`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `TENANT_ID`로 로컬 설정을 바꿀 수 있습니다.
+PostgreSQL을 시작하고 Flyway로 테이블을 준비한 뒤 애플리케이션을 실행합니다. 다른 포트를 쓰려면 `18765`를 사용 가능한 값으로 바꾸세요. Swagger UI는 `http://localhost:18765/swagger-ui.html`에서 엽니다. `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `TENANT_ID`로 DB와 Tenant 설정을 바꿀 수 있습니다.
+
+입고·출고·현재 재고 조회 예시입니다. 매 요청마다 새 `requestId`를 사용하고, 조회 경로의 `1`은 입고 응답의 `id`로 바꿉니다.
+
+```bash
+API_BASE=http://localhost:18765/api/v1
+
+REQUEST_ID=$(uuidgen)
+curl -i -X POST "$API_BASE/stocks/inbound" \
+  -H 'Content-Type: application/json' \
+  -d "{\"sku\":\"SKU-001\",\"quantity\":10,\"requestId\":\"$REQUEST_ID\"}"
+
+REQUEST_ID=$(uuidgen)
+curl -i -X POST "$API_BASE/stocks/outbound" \
+  -H 'Content-Type: application/json' \
+  -d "{\"sku\":\"SKU-001\",\"quantity\":3,\"requestId\":\"$REQUEST_ID\"}"
+
+curl -i "$API_BASE/stocks/1"
+```
 
 ## 설계
 
@@ -30,32 +48,32 @@ PostgreSQL 기동, Flyway DDL 적용, 애플리케이션 실행을 한 번에 �
 
 응답은 과제 형식인 `id`, `name`, `quantity`를 유지합니다. API 기본 경로는 `/api/v1`입니다.
 
-| Method | 경로 | 요청 | 성공 | 주요 오류 |
-| --- | --- | --- | --- | --- |
-| `POST` | `/stocks/inbound` | `sku`, 양수 `quantity`, UUID `requestId`; 선택 `name`, `reason` | 상품 ID·이름·현재 수량 | `400` 요청 오류, `409` 중복 요청 ID |
-| `POST` | `/stocks/outbound` | `sku`, 양수 `quantity`, UUID `requestId`; 선택 `reason` | 상품 ID·이름·현재 수량 | `400` 요청 오류, `404` 미등록 SKU, `409` 재고 부족·중복 요청 ID |
-| `GET` | `/stocks/{itemId}` | 상품 ID | 상품 ID·이름·현재 수량 | `404` 미등록 상품 |
+| Method | 경로 | 요청 | 성공 응답 |
+| --- | --- | --- | --- |
+| `POST` | `/stocks/inbound` | `sku`, 양수 `quantity`, UUID `requestId`; 선택 `name`, `reason` | 상품 ID·이름·현재 수량 |
+| `POST` | `/stocks/outbound` | `sku`, 양수 `quantity`, UUID `requestId`; 선택 `reason` | 상품 ID·이름·현재 수량 |
+| `GET` | `/stocks/{itemId}` | 상품 ID | 상품 ID·이름·현재 수량 |
 
-입고 요청 예시입니다. 출고는 `name` 없이 같은 형식으로 요청합니다.
+요청 오류는 공통 형식으로 응답합니다.
 
-```json
-{
-  "sku": "SKU-001",
-  "name": "상품 A",
-  "quantity": 10,
-  "requestId": "11111111-1111-1111-1111-111111111111"
-}
-```
-
-입고·출고 응답은 `id`, `name`, `quantity`를 반환합니다.
+| HTTP 상태 | 코드 | 발생 조건 |
+| --- | --- | --- |
+| `400 Bad Request` | `INVALID_REQUEST` | 필수값 누락, 수량 0 이하, 잘못된 JSON 또는 필드 형식 |
+| `404 Not Found` | `ITEM_NOT_FOUND` | 등록되지 않은 SKU 출고 또는 상품 조회 |
+| `409 Conflict` | `INSUFFICIENT_STOCK` | 출고 요청 수량보다 현재 재고가 적음 |
+| `409 Conflict` | `REQUEST_CONFLICT` | 이미 사용된 요청 ID |
 
 ```json
-{"id": 1, "name": "상품 A", "quantity": 10}
+{"id": 1, "name": null, "quantity": 10}
 ```
 
-잘못된 요청은 `400`, 미등록 상품 조회·출고는 `404`, 재고 부족과 중복 요청 ID는 `409`입니다. 오류 응답에는 `code`, `message`가 포함됩니다.
+오류 응답 본문 예시입니다.
 
-SKU는 고객사별 상품 식별자이며, 응답 `id`는 내부 상품 ID입니다. SKU 앞뒤 공백은 제거하고 대소문자는 구분합니다. 미등록 SKU의 입고는 상품을 자동 등록하며 `review_status`를 `NEEDS_REVIEW`로 둡니다. 이름은 없어도 되며 응답의 `name`은 `null`일 수 있습니다. 상품 보정 API는 MVP 범위 밖입니다.
+```json
+{"code": "INVALID_REQUEST", "message": "잘못된 요청입니다."}
+```
+
+SKU는 고객사별 상품 식별자이며, 응답 `id`는 내부 상품 ID입니다. 미등록 SKU 입고는 상품을 자동 등록한 뒤 같은 요청에서 재고를 반영합니다.
 
 | 테이블 | 책임 |
 | --- | --- |
@@ -63,57 +81,47 @@ SKU는 고객사별 상품 식별자이며, 응답 `id`는 내부 상품 ID입�
 | `stocks` | 상품별 현재 수량. 조회와 원자적 출고 검증에 사용 |
 | `stock_movements` | 확정된 입고·출고·조정 증감 기록 |
 
-![SKU 등록 여부에 따른 재고 처리 흐름](docs/diagrams/stock-flow.png)
+![입고와 출고의 처리 순서, 트랜잭션 경계, 실패 시 동작](docs/diagrams/stock-flow.png)
 
-movement의 필드는 서로 다른 질문에 답합니다.
-
-| 필드 | 의미 | 값 예시 |
-| --- | --- | --- |
-| `event_type` | 어떤 변화인가 | `INBOUND`, `OUTBOUND`, `ADJUSTMENT` |
-| `source_type` | 어디서 발생했나 | `API`, `EXTERNAL`, `SYSTEM` |
-| `reason` | 왜 조정했나 | 실사 차이, 외부 시스템 정정 |
-
-현재 API는 입고·출고를 `source_type=API`로 기록합니다. `ADJUSTMENT`, `EXTERNAL`, `SYSTEM`은 DDL에 정의된 값이며, 해당 처리 API는 구현하지 않았습니다. DB는 `ADJUSTMENT` 또는 `SYSTEM` 기록에 사유를 요구합니다.
+테이블별 컬럼과 제약조건을 선택한 이유는 [테이블 설계 문서](docs/DATABASE.md)에 정리했습니다.
 
 ### 2. 핵심 설계 이유
 
 #### 시나리오 기준
 
-| 상황 | 처리 흐름 | 보장 |
-| --- | --- | --- |
-| 미등록 SKU 첫 입고 | 상품 등록 시도 → SKU로 `itemId` 조회 → `stocks` 생성·증가 → movement INSERT | 상품·재고·이력을 한 번에 반영 |
-| 동일 SKU 동시 최초 입고 | `(tenant_id, sku)` 유일 제약으로 등록 경쟁 처리 → 각 요청이 재고 증가·이력 기록 | 상품 행은 하나, 요청 수량은 누락되지 않음 |
-| 재고 부족이 섞인 동시 출고 | `quantity >= 요청 수량` 조건부 UPDATE | 가능한 출고만 반영하고 실제 부족 요청은 `409`; 음수 재고 방지 |
-
-상품 등록 후의 SKU 조회는 트랜잭션이 끝난 뒤 하는 조회가 아닙니다. `ON CONFLICT DO NOTHING`이 상품 ID를 돌려주지 않으므로, 같은 Service 트랜잭션 안에서 이후 `stocks`에 연결할 `itemId`를 얻습니다. 응답용 현재 수량도 트랜잭션 안에서 읽고 Service가 반환된 뒤 커밋합니다.
+| 상황 | 설계 판단 | 장점 | 트레이드오프 |
+| --- | --- | --- | --- |
+| 미등록 SKU 첫 입고 | 상품이 없으면 자동 등록·입고하고, 보정이 필요한 상품은 `NEEDS_REVIEW`로 표시 | 상품 확인을 기다리지 않아 현장 흐름이 끊기지 않고, 이후 정보를 보정할 수 있음 | 입고 전에 사람 확인을 요구하면 상품 정보는 즉시 정확해지지만 핸즈프리 흐름이 멈춤 |
+| 동일 SKU 동시 최초 입고 | `(tenant_id, sku)` 유일 제약으로 중복 상품 등록 방지 | 상품은 하나만 만들고 요청별 수량과 movement는 모두 반영 | 상품 생성 경쟁 시 DB가 충돌 요청을 순서대로 처리 |
+| 동시 출고 | `quantity >= 요청 수량` 조건부 UPDATE | 차감 후 수량이 음수가 되지 않음 | 출고 요청은 재고가 실제 부족할 때 `409` 반환 |
 
 #### 기술 설계 기준
 
 | 선택 | 기술적 이유 | 트레이드오프·경계 |
 | --- | --- | --- |
-| `stocks` 집계와 movement 이력 분리 | 현재 수량을 원장 `SUM` 없이 읽고, 변경 근거는 보존 | 모든 재고 변경은 같은 트랜잭션을 거쳐야 함 |
+| `stocks` 집계와 movement 이력 분리 | 현재 수량은 집계 테이블에서 바로 읽고, 변경 근거는 movement에 보존 | 모든 재고 변경은 같은 트랜잭션을 거쳐야 함 |
 | 조건부 원자 UPDATE | 수량 비교와 증감을 DB 한 문장으로 처리. 같은 행 UPDATE는 PostgreSQL이 순서대로 조정 | 같은 상품 요청은 행 갱신 중 대기할 수 있음 |
 | PostgreSQL 기본 `READ COMMITTED` | 각 SQL 문장이 시작될 때 커밋된 데이터를 읽음. 격리 수준은 별도 변경하지 않음 | 일반 SELECT는 행 잠금이 아니며, 연속 SELECT가 같은 스냅샷을 보장하지 않음 |
 | 재고 변경과 movement INSERT를 한 트랜잭션으로 처리 | 어느 한쪽이 실패하면 둘 다 롤백 | 처리 흐름 중 DB 연결을 사용하므로 트랜잭션 안에 외부 호출을 넣지 않음 |
 | 재고 조회 DTO projection | `Item`과 `Stock`을 한 JPQL 쿼리로 반환해 추가 조회와 N+1 방지 | 관계 매핑 대신 필요한 필드를 쿼리에 명시 |
-| 요청마다 ledger `SUM`을 재검사하지 않음 | 별도 SUM 쿼리는 원자 UPDATE의 동시성 방어가 아니며 매 요청 비용 추가 | 현재고와 movement 합계 일치는 통합 테스트에서 확인 |
+| 요청마다 movement `SUM`을 재검사하지 않음 | 별도 SUM 쿼리는 원자 UPDATE의 동시성 방어가 아니며 매 요청 비용 추가 | 현재고와 movement 합계 일치는 통합 테스트에서 확인 |
 
 #### 원자 UPDATE를 선택한 이유
 
-입고·출고 요청의 일반적인 경합을 낙관적 잠금 오류로 호출자에게 돌려보내 재시도시키기보다, DB가 같은 재고 행을 순서대로 처리하게 했습니다. 자동으로 진행되는 재고 처리에서 기술적 충돌 응답을 줄이고, 출고는 실제 재고가 부족할 때만 `409`를 반환합니다.
+DB가 같은 상품의 재고 행 UPDATE를 순서대로 처리하게 했습니다. 일반적인 경합은 호출자에게 오류로 돌려보내지 않고, 출고는 실제 재고가 부족할 때만 `409`를 반환합니다.
 
 | 대안 | 이번 MVP에서 선택하지 않은 이유 | 재검토 조건 |
 | --- | --- | --- |
 | `@Version` 낙관적 잠금 | 충돌을 사용자에게 알리고 재시도시켜야 함 | 업무상 다른 요청의 변경을 반드시 인지해야 할 때 |
 | `SELECT FOR UPDATE` 명시적 비관적 잠금 | 잠글 키·획득 시점·보유 범위를 정해야 하고 트랜잭션이 길면 대기·경합 가능 | 실제 대기 시간이 커져 단일 UPDATE만으로 부족할 때 |
 
-애플리케이션은 `SELECT FOR UPDATE`를 사용하지 않습니다. PostgreSQL이 동일 행 UPDATE를 조정하는 내부 행 잠금은 사용합니다. `stocks.quantity >= 0` DB 제약도 음수 수량을 막습니다. 격리 수준, `SELECT`의 잠금 여부, 동시 UPDATE의 조건 재검사는 [PostgreSQL 트랜잭션 격리 문서](https://www.postgresql.org/docs/17/transaction-iso.html)의 기본 동작에 따릅니다.
+PostgreSQL 기본 `READ COMMITTED`와 UPDATE의 행 잠금을 사용합니다. `SELECT FOR UPDATE`와 `@Version`은 적용하지 않았고, `CHECK (quantity >= 0)`도 음수 수량을 막습니다. 동시 UPDATE 동작은 [PostgreSQL 기본 격리 수준](https://www.postgresql.org/docs/17/transaction-iso.html)에 따릅니다.
 
-#### 재고 이력을 INSERT-only로 두는 이유
+#### 재고 변경을 보존하는 설계 판단
 
-![movement를 INSERT-only로 관리하는 이유](docs/diagrams/stock-movement-insert-reason.png)
+![재고 변경 기록을 보존하는 설계](docs/diagrams/stock-movement-insert-reason.png)
 
-기존 이력의 `UPDATE`·`DELETE`·`TRUNCATE`는 DB 트리거가 거절합니다. 잘못된 이력은 삭제·수정하지 않고 사유가 담긴 새 `ADJUSTMENT` movement로 보정하는 것이 설계 원칙입니다. 조정 API는 현재 구현 범위에 포함하지 않았습니다.
+확정된 movement는 DB 트리거로 `UPDATE`·`DELETE`·`TRUNCATE`를 막습니다. 잘못된 기록은 새 `ADJUSTMENT` movement로 정정합니다. 조정 API는 아직 구현하지 않았습니다.
 
 ## 검증
 
@@ -129,7 +137,7 @@ movement의 필드는 서로 다른 질문에 답합니다.
 | `StockApiTest` | HTTP 입고·출고·조회, 입력 오류, 재고 부족, 롤백, OpenAPI |
 | `StockConcurrencyIntegrationTest` | 동시 최초 입고, 동시 입고, 동시 출고, 입고·출고 혼합, 현재고와 movement 합계 |
 
-두 클래스 모두 Testcontainers PostgreSQL을 사용합니다. H2를 쓰지 않습니다. 원장 INSERT 실패 시 트랜잭션 롤백과 동시 요청 후 `stocks.quantity = SUM(stock_movements.quantity_delta)`를 DB 결과로 검증합니다.
+두 클래스 모두 Testcontainers PostgreSQL을 사용합니다. H2를 쓰지 않습니다. movement INSERT 실패 시 전체 롤백되고, 동시 요청 후 `stocks.quantity = SUM(stock_movements.quantity_delta)`가 성립하는지 DB 결과로 확인합니다.
 
 ## 확장·회고
 
@@ -150,5 +158,3 @@ movement의 필드는 서로 다른 질문에 답합니다.
 | --- | --- |
 | Serena MCP | 코드 구조와 변경 위치 탐색 |
 | Context7 MCP | 라이브러리 공식 문서와 사용법 확인 |
-
-손글씨 이미지 글꼴: Gaegu, SIL Open Font License. [라이선스 정보](https://github.com/google/fonts/tree/main/ofl/gaegu)
