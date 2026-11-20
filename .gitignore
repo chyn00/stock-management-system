@@ -1,0 +1,23 @@
+# 에이전트 지침과 개인 작업 상태는 로컬에서만 관리합니다.
+/AGENTS.md
+/docs/TASKS.md
+.serena/
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
