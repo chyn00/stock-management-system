@@ -10,7 +10,7 @@
 | `tenant_id`, `sku` | SKU를 고객사 범위에서 식별하고 `(tenant_id, sku)` 유일 제약으로 동시 최초 등록을 처리 |
 | `name` | 입고 시점에 상품명을 몰라도 등록할 수 있도록 nullable |
 | `barcode`, `price`, `metadata` | 입고 확정에 필요하지 않은 상품 정보는 선택 값 |
-| `review_status` | 자동 등록된 상품 정보를 나중에 확인할 수 있도록 상태를 보존 |
+| `review_status` | 자동 등록 상품의 정보 보정이 필요한지 상태로 저장. 기본값 `NEEDS_REVIEW`; 상품 보정 기능은 MVP 범위에서 제외 |
 
 ## stocks
 

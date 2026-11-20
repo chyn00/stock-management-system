@@ -57,7 +57,7 @@ class StockConcurrencyIntegrationTest {
     mapper = context.getBean(ObjectMapper.class);
     client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     String port = context.getEnvironment().getRequiredProperty("local.server.port");
-    endpoint = URI.create("http://localhost:" + port + "/api/v1/stocks/inbound");
+    endpoint = URI.create("http://localhost:" + port + "/api/stocks/inbound");
   }
 
   @AfterAll

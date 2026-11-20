@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/stocks")
+@RequestMapping("/api/stocks")
 public class StockController {
 
   private final InboundService inboundService;

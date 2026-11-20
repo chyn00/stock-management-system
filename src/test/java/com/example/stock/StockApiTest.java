@@ -48,7 +48,7 @@ class StockApiTest {
     mapper = context.getBean(ObjectMapper.class);
     client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     String port = context.getEnvironment().getRequiredProperty("local.server.port");
-    endpoint = URI.create("http://localhost:" + port + "/api/v1/stocks/inbound");
+    endpoint = URI.create("http://localhost:" + port + "/api/stocks/inbound");
   }
 
   @AfterAll
@@ -213,10 +213,10 @@ class StockApiTest {
   }
 
   @Test
-  void publishesOpenApiDocsForVersionedEndpoints() throws Exception {
+  void publishesOpenApiDocsForStockEndpoints() throws Exception {
     URI docsUri =
         URI.create(
-            endpoint.toString().replace("/api/v1/stocks/inbound", "/v3/api-docs/stock-v1"));
+            endpoint.toString().replace("/api/stocks/inbound", "/v3/api-docs/stock"));
     HttpRequest request =
         HttpRequest.newBuilder(docsUri).GET().build();
 
@@ -224,9 +224,9 @@ class StockApiTest {
 
     assertEquals(200, response.statusCode(), response.body());
     JsonNode body = mapper.readTree(response.body());
-    assertEquals("v1", body.path("info").path("version").asString());
-    assertTrue(body.path("paths").has("/api/v1/stocks/inbound"));
-    assertTrue(body.path("paths").has("/api/v1/stocks/outbound"));
+    assertEquals("0.1.0-SNAPSHOT", body.path("info").path("version").asString());
+    assertTrue(body.path("paths").has("/api/stocks/inbound"));
+    assertTrue(body.path("paths").has("/api/stocks/outbound"));
   }
 
   private HttpResponse<String> inbound(String sku, long quantity, String name, UUID requestId)

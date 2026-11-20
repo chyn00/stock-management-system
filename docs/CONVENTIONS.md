@@ -4,7 +4,7 @@
 
 - Google Java Style을 기준으로 합니다. 클래스는 PascalCase, 메서드·변수는 camelCase, 상수는 UPPER_SNAKE_CASE, DB 식별자는 snake_case, Enum 값은 UPPER_SNAKE_CASE로 작성합니다.
 - 코드 식별자는 영어로 작성합니다. 주석은 필요한 경우에만 간결한 한글로 작성합니다.
-- API 경로는 소문자 복수형 리소스를 사용하고 기본 경로는 `/api/v1`입니다.
+- API 경로는 소문자 복수형 리소스를 사용하고 기본 경로는 `/api`입니다.
 - Controller는 HTTP 입출력만 담당하고, Service는 비즈니스 흐름과 트랜잭션을 담당하며, Repository는 DB 접근을 담당합니다. DTO와 DB 표현을 분리합니다.
 - 업무 도메인 안에서 `api`, `service`, `repository`, `entity`로 구분합니다. Controller는 `api`, 요청·응답 DTO는 `api/dto`에 둡니다. 테이블마다 별도 도메인을 만들지 않습니다. 실제 클래스가 있는 패키지만 만들며, Spring Data JPA의 Repository 외에 불필요한 인터페이스나 구현 계층을 추가하지 않습니다.
 - SOLID 원칙을 따르되 쉬운 설계를 우선합니다. 클래스는 한 가지 명확한 책임을 갖고 의존 방향을 분명히 합니다. 실제 요구나 중복이 확인되기 전에는 인터페이스, 추상 계층, 디자인 패턴을 추가하지 않습니다.
