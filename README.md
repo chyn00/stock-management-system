@@ -31,21 +31,24 @@ SERVER_PORT=18765 ./run-local.sh
 #### curl 예시
 
 ```bash
+set -e
 API_BASE=http://localhost:18765/api
+SKU="SKU-$(date +%s)-$$"
 
-REQUEST_ID=$(uuidgen)
-curl -i -X POST "$API_BASE/stocks/inbound" \
+INBOUND=$(curl -fsS -X POST "$API_BASE/stocks/inbound" \
   -H 'Content-Type: application/json' \
-  -d "{\"sku\":\"SKU-001\",\"quantity\":10,\"requestId\":\"$REQUEST_ID\"}"
+  -d "{\"sku\":\"$SKU\",\"quantity\":10,\"requestId\":\"$(uuidgen)\"}")
+printf '%s\n' "$INBOUND"
+ITEM_ID=$(printf '%s' "$INBOUND" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
 
-REQUEST_ID=$(uuidgen)
 curl -i -X POST "$API_BASE/stocks/outbound" \
   -H 'Content-Type: application/json' \
-  -d "{\"sku\":\"SKU-001\",\"quantity\":3,\"requestId\":\"$REQUEST_ID\"}"
+  -d "{\"sku\":\"$SKU\",\"quantity\":3,\"requestId\":\"$(uuidgen)\"}"
 
-ITEM_ID=1 # 입고 응답의 id
 curl -i "$API_BASE/stocks/$ITEM_ID"
 ```
+
+오류별 실행 예시는 [API 예시](docs/API_EXAMPLES.md)를 참고합니다.
 
 ## 설계
 
@@ -72,9 +75,12 @@ API 기본 경로: `/api`
 {"id": 1, "name": null, "quantity": 10}
 ```
 
-오류 응답 본문 예시입니다.
+오류 응답 예시 (`400 Bad Request`)
 
-```json
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
 {"code": "INVALID_REQUEST", "message": "잘못된 요청입니다."}
 ```
 
@@ -92,28 +98,26 @@ SKU는 고객사별 상품 식별자이며, 응답 `id`는 내부 상품 ID입�
 
 ### 2. 핵심 설계 이유
 
-#### 현재 수량 집계와 변경 이력 분리
+#### 1. 상품의 현재 재고 수량 확인
 
-![현재 수량 집계와 변경 이력 분리, 정합성 보완](docs/diagrams/stock-movement-insert-reason.png)
+- **설계:** `stocks.quantity`에 상품별 현재 수량을 집계해 저장합니다.
+- **효과:** 조회할 때마다 `stock_movements` 전체를 합산하지 않아 현재 수량을 바로 읽습니다. 여러 애플리케이션 인스턴스도 같은 PostgreSQL 값을 기준으로 조회합니다.
+- **동시성:** 출고는 `quantity >= 요청 수량` 조건을 포함한 원자적 UPDATE로 처리합니다. 같은 재고 행의 갱신은 PostgreSQL이 순서대로 처리하고, DB의 `CHECK (quantity >= 0)`도 음수 수량을 막습니다.
 
-#### 기술적 문제와 보완
+![집계 테이블과 INSERT 이력 분리](docs/diagrams/stock-movement-insert-reason.png)
 
-| 문제 | 보완 |
-| --- | --- |
-| 집계와 movement 불일치 | `stocks` UPDATE와 movement INSERT를 같은 트랜잭션에서 처리. 한쪽 실패 시 모두 롤백 |
-| 동시 출고로 음수 재고 발생 | `quantity >= 요청 수량` 조건부 UPDATE와 `CHECK (quantity >= 0)` 적용 |
-| 동시 최초 SKU 등록 | `(tenant_id, sku)` 유일 제약과 `ON CONFLICT DO NOTHING`으로 중복 상품 방지 |
-| 재고 조회 추가 쿼리 | `Item`과 `Stock`을 한 DTO projection 쿼리로 조회해 N+1 방지 |
+#### 2. 입고·출고 처리 시 데이터 정합성 보장
 
-PostgreSQL 기본 `READ COMMITTED`를 사용합니다. 같은 재고 행의 UPDATE는 DB가 순서대로 처리하므로 `@Version`이나 명시적 `SELECT FOR UPDATE` 없이 출고 수량을 보호합니다. [PostgreSQL 기본 격리 동작](https://www.postgresql.org/docs/17/transaction-iso.html)
+- **설계:** 현재 수량은 `stocks`에서 갱신하고, 확정된 증감은 `stock_movements`에 INSERT합니다.
+- **정합성:** 두 작업을 같은 PostgreSQL 트랜잭션으로 처리합니다. 재고 갱신이나 movement 기록 중 하나라도 실패하면 둘 다 롤백됩니다.
+- **미등록 상품 입고:** 먼저 SKU를 조회하고, 없을 때만 상품을 등록한 뒤 입고를 계속합니다. 상세 정보가 비어 있을 수 있어 `items.review_status` 컬럼에 `NEEDS_REVIEW`를 저장합니다. 실제 보정 기능은 MVP에서 제외했습니다.
+- **동시 최초 등록:** `(tenant_id, sku)` 유일 제약과 `ON CONFLICT DO NOTHING`으로 상품 중복을 막고, 각 요청의 수량은 모두 반영합니다.
 
-#### 업무 시나리오
+#### 3. 동시 요청 안정성
 
-| 상황 | 설계 판단 | 장점 | 트레이드오프 |
-| --- | --- | --- | --- |
-| 미등록 SKU 첫 입고 | 상세 정보 누락에 대비해 `items.review_status` 컬럼에 `NEEDS_REVIEW` 저장 | 상품 확인을 기다리지 않아 입고 흐름 유지 | 보정 기능은 MVP에서 제외. 입고 전 확인은 정확도를 높이지만 핸즈프리 흐름을 멈춤 |
-| 동일 SKU 동시 최초 입고 | `(tenant_id, sku)` 유일 제약으로 중복 상품 등록 방지 | 상품은 하나만 만들고 요청별 수량과 movement는 모두 반영 | 상품 생성 경쟁 시 DB가 충돌 요청을 순서대로 처리 |
-| 동시 출고 | `quantity >= 요청 수량` 조건부 UPDATE | 차감 후 수량이 음수가 되지 않음 | 재고가 실제 부족한 요청은 `409` 반환 |
+- **출고:** `quantity >= 요청 수량` 조건부 UPDATE로 재고 차감과 검증을 한 문장에서 수행합니다. 재고가 부족한 요청만 `409`를 반환합니다.
+- **입고:** 같은 상품 행의 UPDATE는 PostgreSQL 기본 `READ COMMITTED`에서 순서대로 처리됩니다. 낙관적 잠금 오류 후 재시도하게 하거나 명시적 `SELECT FOR UPDATE`를 추가하지 않아도 됩니다.
+- **조회:** `Item`과 `Stock`을 한 DTO projection 쿼리로 조회해 N+1을 방지합니다.
 
 ## 검증
 
@@ -133,16 +137,15 @@ PostgreSQL 기본 `READ COMMITTED`를 사용합니다. 같은 재고 행의 UPDA
 
 ## 확장·회고
 
-### 4. MVP에서 집중한 부분과 남긴 범위
+### 4. 핵심 아키텍처와 확장 방향
 
-| 이번에 집중하고 검증한 것 | 필요성은 고려했지만 과제 범위 밖으로 둔 것 |
-| --- | --- |
-| 자동 상품 등록 입고와 동시 최초 SKU 등록 | 인증 및 실제 사용자 기반 Tenant 식별 |
-| 음수 재고 방지, 집계·movement 트랜잭션 정합성 | 상품 메타데이터 보정 화면 및 사람 검토 흐름 |
-| PostgreSQL 기반 API·동시성·롤백 테스트 | 바코드 확정 업무, 예약 재고, 물류센터 |
-| 단일 DB를 여러 애플리케이션 인스턴스의 정합성 기준으로 사용 | 로컬 캐시·Redis·외부 원자 갱신과 DB 간 동기화 |
+- **기능 확장:** 재고 변경 경로가 추가되어도 `stocks` 갱신과 `stock_movements` INSERT를 같은 트랜잭션으로 묶어 현재 수량과 변경 이력을 함께 보존합니다. 외부 시스템이나 관리자 조정은 변경 출처와 사유를 기록하는 방식으로 확장할 수 있습니다.
+- **인스턴스 확장:** 여러 애플리케이션 인스턴스가 PostgreSQL의 같은 재고 행을 기준으로 처리합니다. 로컬 캐시에 재고 정합성을 맡기지 않아 인스턴스 간 값 불일치를 피합니다.
+- **성능 확장:** 먼저 PostgreSQL 쿼리와 인덱스를 측정·개선합니다. 읽기 부하가 확인되면 조회 캐시나 읽기 전용 경로를 검토하고, 재고 변경의 원자성과 DB 동기화 방안을 함께 설계합니다.
+- **동시성 제어:** 현재는 조건부 UPDATE로 재고 검증과 변경을 원자적으로 처리합니다. 충돌을 사용자에게 알리고 재시켜야 하는 요구가 생기면 낙관적 잠금을, 여러 단계의 변경을 한 구간에서 직렬화해야 한다면 비관적 잠금을 검토합니다. 락 대기와 충돌 빈도를 확인한 뒤 적용합니다.
+- **보류한 선택:** Redis의 원자 갱신은 PostgreSQL과의 동기화·복구 설계가 추가되므로 현재 MVP에는 도입하지 않았습니다. 인증 기반 Tenant 식별, 상품 정보 보정, 예약 재고와 물류센터 업무도 요구사항이 생길 때 확장합니다.
 
-먼저 PostgreSQL 쿼리와 인덱스를 측정·개선하고, 외부 캐시나 원자 갱신 수단은 성능 근거와 데이터 정합성 설계가 마련된 뒤 검토합니다. 인증 없는 MVP에서 임의 `tenant_id` 헤더를 보안 경계로 사용하지 않습니다.
+현재 범위에서는 단일 PostgreSQL 트랜잭션으로 핵심 정합성을 유지합니다. 아키텍처를 바꾸기 전에 실제 부하와 업무 요구를 확인합니다.
 
 ### 개발 도구 사용
 
