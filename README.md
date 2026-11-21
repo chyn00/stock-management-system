@@ -23,7 +23,7 @@ SERVER_PORT=18765 ./run-local.sh
 ```
 
 - PostgreSQL: Docker Compose 기동
-- PostgreSQL 시간대: `Asia/Seoul`
+- PostgreSQL 서버 기본 시간대: `Asia/Seoul` (psql 등 직접 접속 기준)
 - 테이블: 애플리케이션 시작 시 Flyway 적용
 - DB DDL: [최초 스키마 SQL](src/main/resources/db/migration/V1__create_initial_schema.sql)
 - Swagger UI: `http://localhost:18765/swagger-ui.html`

@@ -68,7 +68,9 @@
 
 ## 인덱스와 정합성
 
-- PostgreSQL 세션 시간대는 `Asia/Seoul`입니다. `TIMESTAMPTZ`는 절대 시각으로 저장되고 조회 시 해당 시간대로 표현됩니다.
+- Docker Compose의 PostgreSQL 서버 기본 시간대는 `Asia/Seoul`입니다. psql 등 직접 접속한 세션은 이 기본값을 사용합니다.
+- 애플리케이션의 PostgreSQL 세션 시간대는 PgJDBC 연결 시 JVM 기본 시간대의 영향을 받습니다. 현재 API는 시각 값을 응답하지 않습니다.
+- `TIMESTAMPTZ`는 절대 시각으로 저장되며, 조회 시 세션 시간대에 맞춰 표현됩니다.
 - PK와 UNIQUE 제약에 해당하는 인덱스는 PostgreSQL이 생성합니다.
 - 추가 조회 인덱스는 `stock_movements(tenant_id, item_id)`입니다.
 - 재고 갱신과 movement INSERT는 한 PostgreSQL 트랜잭션으로 처리합니다. 한쪽이 실패하면 전체를 롤백합니다.
