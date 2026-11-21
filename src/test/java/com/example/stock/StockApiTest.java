@@ -133,6 +133,39 @@ class StockApiTest {
   }
 
   @Test
+  void rejectsNonNumericItemIdWithCommonErrorResponse() throws Exception {
+    HttpResponse<String> response = getStock("abc");
+
+    assertEquals(400, response.statusCode(), response.body());
+    assertEquals("INVALID_REQUEST", mapper.readTree(response.body()).path("code").asString());
+  }
+
+  @Test
+  void rejectsInboundWithoutContentTypeWithCommonErrorResponse() throws Exception {
+    HttpResponse<String> response = postWithoutContentType("{}");
+
+    assertEquals(415, response.statusCode(), response.body());
+    assertEquals(
+        "UNSUPPORTED_MEDIA_TYPE", mapper.readTree(response.body()).path("code").asString());
+  }
+
+  @Test
+  void rejectsInboundWhenStockQuantityWouldOverflow() throws Exception {
+    String sku = newSku();
+
+    HttpResponse<String> first = inbound(sku, Long.MAX_VALUE, null, UUID.randomUUID());
+    assertEquals(200, first.statusCode(), first.body());
+    assertQuantityAndMovements(sku, Long.MAX_VALUE, 1);
+
+    HttpResponse<String> response = inbound(sku, 1, null, UUID.randomUUID());
+
+    assertEquals(409, response.statusCode(), response.body());
+    assertEquals(
+        "STOCK_QUANTITY_OVERFLOW", mapper.readTree(response.body()).path("code").asString());
+    assertQuantityAndMovements(sku, Long.MAX_VALUE, 1);
+  }
+
+  @Test
   void rollsBackStockIncreaseOnConflictingRequestId() throws Exception {
     String sku = newSku();
     UUID requestId = UUID.randomUUID();
@@ -252,6 +285,15 @@ class StockApiTest {
     return client.send(request, HttpResponse.BodyHandlers.ofString());
   }
 
+  private HttpResponse<String> postWithoutContentType(String body) throws Exception {
+    HttpRequest request =
+        HttpRequest.newBuilder(endpoint)
+            .timeout(Duration.ofSeconds(20))
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build();
+    return client.send(request, HttpResponse.BodyHandlers.ofString());
+  }
+
   private HttpResponse<String> outbound(String sku, long quantity, UUID requestId)
       throws Exception {
     var body = mapper.createObjectNode();
@@ -262,6 +304,10 @@ class StockApiTest {
   }
 
   private HttpResponse<String> getStock(long itemId) throws Exception {
+    return getStock(Long.toString(itemId));
+  }
+
+  private HttpResponse<String> getStock(String itemId) throws Exception {
     HttpRequest request =
         HttpRequest.newBuilder(URI.create(endpoint.toString().replace("/inbound", "/" + itemId)))
             .timeout(Duration.ofSeconds(20))
